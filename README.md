@@ -3,6 +3,7 @@ Go About Nginx SSL terminator Docker image
 
 An Nginx container that provides SSL termination for linked containers.
 
+
 ## Usage
 
     cat > variables.yml <<'.'
@@ -16,13 +17,13 @@ An Nginx container that provides SSL termination for linked containers.
         -----BEGIN PRIVATE KEY-----
         [...]
         -----END PRIVATE KEY-----
-    proxies:
-    - server: website
+    servers:
+    - name: website
       domain: example.com
       aliases:
       - www.example.com
       - new.example.com
-    - server: api
+    - name: api
       domain: api.example.com
     .
 
@@ -41,11 +42,25 @@ for parameterization. The following variables are available:
     * **certificate_key**: The private key to the SSL certificate, in PEM
                            format.
 
-* **proxies**: Website proxies:
+* **servers**: Proxied servers:
+    * **name**: The backend server (container) name.
     * **domain / domains**: The canonical domain name(s). The latter value
-                          overrides the former.
+                            overrides the former.
     * **alias / aliases**: Domain alias(es) that will be redirected to the
                            (first) canonical domain. The latter value overrides
                            the former.
 
-Because the container uses structured template variables that cannot be expressed in environment variables you need to use a YAML file.
+* **proxies / proxy**: Optional downstream proxies that use the PROXY protocol.
+                       The latter value overrides the former. (This enables the
+                       `proxy_protocol` option on all servers, which means you
+                       cannot use plain HTTP(S) anymore.)
+
+Because the container uses structured template variables that cannot be
+expressed in environment variables you need to use a variables file, as shown
+in the usage example.
+
+Alternatively, you can use a certificate and key from the host system using
+volumes. You will need to mount the following files:
+
+* **certificate**: /templates/etc/nginx/ssl_certificate.pem
+* **certificate_key**: /templates/etc/nginx/ssl_certificate_key.pem
