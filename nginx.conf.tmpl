@@ -1,0 +1,118 @@
+{# Start entrypoint templating #}
+
+{% if proxies is not defined and proxy is defined %}
+    {% set proxies = proxy | split(',') %}
+{% endif %}
+
+{% if proxies is defined %}
+    {{ '{{' }} $optProxyProtocol := "proxy_protocol" {{ '}}' }}
+
+    {% for proxy in proxies %}
+        set_real_ip_from  {{ proxy }};
+    {% endfor %}
+
+    real_ip_header  proxy_protocol;
+{% else %}
+    {{ '{{' }} $optProxyProtocol := "" {{ '}}' }}
+{% endif %}
+
+
+{# End entrypoint templating, start docker-gen templating #}
+{% raw %}
+
+# If we receive X-Forwarded-Proto, pass it through; otherwise, pass along the
+# scheme used to connect to this server
+map $http_x_forwarded_proto $proxy_x_forwarded_proto {
+  default $http_x_forwarded_proto;
+  ''      $scheme;
+}
+
+# If we receive Upgrade, set Connection to "upgrade"; otherwise, delete any
+# Connection header that may have been passed to this server
+map $http_upgrade $proxy_connection {
+  default upgrade;
+  '' close;
+}
+
+log_format vhost '$host $remote_addr - $remote_user [$time_local] '
+                 '"$request" $status $body_bytes_sent '
+                 '"$http_referer" "$http_user_agent"';
+
+access_log off;
+
+# HTTP 1.1 support
+proxy_http_version 1.1;
+proxy_buffering off;
+proxy_set_header Host $http_host;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $proxy_connection;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $proxy_x_forwarded_proto;
+
+ssl_certificate      /etc/nginx/ssl_certificate.pem;
+ssl_certificate_key  /etc/nginx/ssl_certificate_key.pem;
+add_header           Strict-Transport-Security max-age=31536000;
+
+server {
+    listen 80 {{ $optProxyProtocol }};
+    access_log /var/log/nginx/access.log vhost;
+
+    return 503;
+}
+
+server {
+    listen 443 ssl http2 {{ $optProxyProtocol }};
+    access_log /var/log/nginx/access.log vhost;
+
+    return 503;
+}
+
+{{ range $ }}
+    {{ if .Env.WEB_DOMAIN }}
+        {{ $domains := replace .Env.WEB_DOMAIN "," " " -1 }}
+
+        server {
+            server_name {{ $domains }};
+            listen 80 {{ $optProxyProtocol }};
+            access_log /var/log/nginx/access.log vhost;
+
+            return 301 https://$host$request_uri;
+        }
+
+        server {
+            server_name {{ $domains }};
+            listen 443 ssl http2 {{ $optProxyProtocol }};
+            access_log /var/log/nginx/access.log vhost;
+
+            location / {
+                proxy_pass http://{{ .IP }}/;
+            }
+        }
+
+        {{ if .Env.WEB_ALIAS }}
+            {{ $aliases := replace .Env.WEB_ALIAS "," " " -1 }}
+            {{ $firstdomain := split .Env.WEB_DOMAIN "," | first}}
+
+            server {
+                server_name {{ $aliases }};
+                listen 80 {{ $optProxyProtocol }};
+                access_log /var/log/nginx/access.log vhost;
+
+                return 301 https://{{ $firstdomain }}$request_uri;
+            }
+
+            server {
+                server_name {{ $aliases }};
+                listen 443 ssl http2 {{ $optProxyProtocol }};
+                access_log /var/log/nginx/access.log vhost;
+
+                return 301 https://{{ $firstdomain }}$request_uri;
+            }
+        {{ end }}
+
+    {{ end }}
+{{ end }}
+
+{% endraw %}
+{# End docker-gen templating #}
