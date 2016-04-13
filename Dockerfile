@@ -12,7 +12,7 @@ RUN apt-get update -q && \
     rm -r /var/lib/apt/lists/*
 
 # Install Forego
-RUN wget -P /usr/local/bin https://godist.herokuapp.com/projects/ddollar/forego/releases/current/linux-amd64/forego && \
+RUN wget -P /usr/local/bin https://github.com/jwilder/forego/releases/download/v0.16.1/forego && \
     chmod u+x /usr/local/bin/forego
 
 # Install docker-gen
